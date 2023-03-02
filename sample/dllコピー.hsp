@@ -1,0 +1,14 @@
+firstfir=dir_cur
+chdir "../"
+mes dir_cur+"\\src\\Release"
+chdir dir_cur+"\\src\\Release"
+exist "PNGmaker.dll"
+if strsize!=-1{
+	bcopy "PNGmaker.dll",firstfir+"\\PNGmaker.dll"
+}
+
+wait 4
+chdir firstfir
+delete "obj"
+delete "hsptmp"
+end

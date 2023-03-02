@@ -1,0 +1,33 @@
+#include "PNGmaker.as"
+
+fname="input.bmp"
+screen 1:picload fname
+screen 2:picload fname
+
+NotColortoVal 2,255,255,255,254
+ColortoVal 2,255,255,255,0
+ColortoVal 1,255,255,255,0
+ColortoVal 2,254,254,254,255
+AlphaBlur 2,12,250
+MulVal 2,0.7
+
+gsel 1
+redraw 1
+
+gsel 2
+redraw 1
+
+PngSave "test.png",1,2
+
+
+
+/*
+fname="HPblack.png"
+PngLoad fname,2,3
+gsel 2
+bmpsave "2.bmp"
+
+gsel 3
+AlphaBlur 3,4,256
+bmpsave "3.bmp"
+*/
