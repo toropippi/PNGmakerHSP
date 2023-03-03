@@ -1,0 +1,7 @@
+bcopy "PNGmaker.dll","C:\\hsp36\\PNGmaker.dll"
+bcopy "PNGmaker.as","C:\\hsp36\\common\\PNGmaker.as"
+
+wait 4
+delete "obj"
+delete "hsptmp"
+end
