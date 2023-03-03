@@ -1,0 +1,17 @@
+#include "PNGmaker.as"
+
+fname="input2.bmp"
+screen 1:picload fname
+screen 2:picload fname
+
+
+ColortoVal 2,255,255,255,0
+MulVal 2,0.06
+PixelCosHeightVecLight 2,7,0.4  ,550,-500,250  ,120,233,193  ,29,50.0
+gsel 2
+redraw 1
+
+ColortoVal 1,255,255,255,0
+PixelHeight 1
+gsel 1
+redraw 1

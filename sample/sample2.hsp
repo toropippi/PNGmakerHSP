@@ -1,0 +1,12 @@
+#include "PNGmaker.as"
+
+fname="input2.bmp"
+screen 1:picload fname
+
+
+ColortoVal 1,255,255,255,0
+AlphaBlur 1,12,250
+MulVal 1,0.7
+
+gsel 1
+redraw 1

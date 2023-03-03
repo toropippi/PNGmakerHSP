@@ -8,8 +8,11 @@
 
 
 #include <windows.h>
-#include <vector>
+#include <tuple>
+#include <array>
 #include <string>
+#include <vector>
+#include <queue>
 #include <stdio.h>
 #include <stdlib.h>
 #include "stb_image_write.h"
@@ -80,6 +83,7 @@ static void PngSave_(void)
 		width = bm->sx;
 		wByte = bm->sx * 3;
 		height = bm->sy;
+		wByte = (wByte + 3) / 4 * 4;
 
 		vector<unsigned char> vecData(width * height * 4);
 
@@ -114,6 +118,7 @@ static void PngSave_(void)
 		width1 = bm1->sx;
 		wByte1 = bm1->sx * 3;
 		height1 = bm1->sy;
+		wByte1 = (wByte1 + 3) / 4 * 4;
 
 		vector<unsigned char> vecData(width1 * height1 * 4);
 
@@ -144,6 +149,7 @@ static void PngSave_(void)
 		width2 = bm2->sx;
 		wByte2 = bm2->sx * 3;
 		height2 = bm2->sy;
+		wByte2 = (wByte2 + 3) / 4 * 4;
 
 		//イメージデータ格納
 		int mnh = min(height2, height1);
@@ -207,6 +213,7 @@ static void PngLoad_(void)
 	width1 = bm1->sx;
 	wByte1 = bm1->sx * 3;
 	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
 
 	BMSCR* bm2;
 	bm2 = (BMSCR*)getbmscr(p2);	// p1のBMSCRを取得
@@ -218,6 +225,7 @@ static void PngLoad_(void)
 	width2 = bm2->sx;
 	wByte2 = bm2->sx * 3;
 	height2 = bm2->sy;
+	wByte2 = (wByte2 + 3) / 4 * 4;
 
 
 
@@ -323,6 +331,7 @@ static void AlphaBlur( void )
 	width1 = bm1->sx;
 	wByte1 = bm1->sx * 3;
 	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
 
 	//範囲外は黒＝透明として処理
 	int p22 = p2 * p2;
@@ -404,6 +413,7 @@ static void ColortoVal(void)
 	width1 = bm1->sx;
 	wByte1 = bm1->sx * 3;
 	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
 
 
 	for (int j = 0; j < height1; j++)
@@ -451,6 +461,7 @@ static void NotColortoVal(void)
 	width1 = bm1->sx;
 	wByte1 = bm1->sx * 3;
 	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
 
 
 	for (int j = 0; j < height1; j++)
@@ -474,7 +485,7 @@ static void NotColortoVal(void)
 
 static void MulVal(void)
 {
-	//		(NotColortoVal p1,p2,p3,p4,p5)
+	//		(MulVal p1,p2)
 	//		p1の画面で全部の色をp2倍する
 	p1 = code_geti();								// 整数値を取得
 	double dp2 = code_getd();
@@ -488,6 +499,7 @@ static void MulVal(void)
 	width1 = bm1->sx;
 	wByte1 = bm1->sx * 3;
 	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
 
 
 	for (int j = 0; j < height1; j++)
@@ -513,6 +525,277 @@ static void MulVal(void)
 }
 
 
+
+
+
+static void PixelHeight(void)
+{
+	//		(PixelHeight p1)
+	//		p1の画面で黒を高さ0として、黒以外のピクセルの高さを求める。黒からの距離が遠いほど高い
+	//		出力は同じp1の画面にピクセルとして出力
+	p1 = code_geti();								// 整数値を取得
+	BMSCR* bm1;
+	bm1 = (BMSCR*)getbmscr(p1);	// p1のBMSCRを取得
+	unsigned char* lpDest1;		// 描画画面のバッファ
+	int width1;		// 描画座標幅
+	int height1;	// 描画座標高さ
+	int wByte1;
+	lpDest1 = (unsigned char*)bm1->pBit;
+	width1 = bm1->sx;
+	wByte1 = bm1->sx * 3;
+	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
+
+	vector<vector<int>> data(height1, vector<int>(width1, -1));
+	queue<tuple<int, int>> que;
+	
+	for (int j = 0; j < height1; j++)
+	{
+		for (int i = 0; i < width1; i++)
+		{
+			auto b = lpDest1[j * wByte1 + i * 3 + 0];
+			auto g = lpDest1[j * wByte1 + i * 3 + 1];
+			auto r = lpDest1[j * wByte1 + i * 3 + 2];
+			if ((r == 0) & (g == 0) & (b == 0)) 
+			{
+				data[j][i] = 0;
+				que.emplace(j, i);
+			}
+		}
+	}
+
+	int dx[] = { 0,0,-1,1 };
+	int dy[] = { -1,1,0,0 };
+
+	while (!que.empty()) 
+	{
+		int y, x;
+		tie (y, x) = que.front();
+		que.pop();
+		auto h = data[y][x];
+
+		for (int ii = 0; ii < 4; ii++) 
+		{
+			int ny = y + dy[ii];
+			int nx = x + dx[ii];
+			if (ny >= height1)continue;
+			if (ny < 0)continue;
+			if (nx >= width1)continue;
+			if (nx < 0)continue;
+			auto nh = data[ny][nx];
+			if (nh == -1)
+			{
+				data[ny][nx] = h + 1;
+				que.emplace(ny, nx);
+			}
+		}
+	}
+
+
+	for (int j = 0; j < height1; j++)
+	{
+		for (int i = 0; i < width1; i++)
+		{
+			int h = data[j][i];
+			unsigned char uc = 0;
+			if (h > 0) 
+			{
+				if (h > 255)h = 255;
+				uc = (unsigned char)h;
+			}
+
+			lpDest1[j * wByte1 + i * 3 + 0] =
+				lpDest1[j * wByte1 + i * 3 + 1] =
+				lpDest1[j * wByte1 + i * 3 + 2] = uc;
+		}
+	}
+
+	return;
+}
+
+
+
+static void PixelCosHeightVecLight(void)
+{
+	//		(PixelCosHeightVecLight p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11)
+	//		p1の画面で不透明の部分の縁を認識して
+	//		出力は同じp1の画面にピクセルとして出力
+	p1 = code_geti();								// 整数値を取得
+	p2 = code_geti();								// 勾配計算の半径
+	double dp3 = code_getd();								// cos 円 高さ
+	double dp4 = code_getd();								// 光源x
+	double dp5 = code_getd();								// 光源y
+	double dp6 = code_getd();								// 光源z
+	double dp7 = code_getd();								// 光源col R
+	double dp8 = code_getd();								// 光源col G
+	double dp9 = code_getd();								// 光源col B
+	double dp10 = code_getdd(39);								// スペキュラpow数
+	double dp11 = code_getdd(5.5);								// スペキュラpow強さ
+
+	BMSCR* bm1;
+	bm1 = (BMSCR*)getbmscr(p1);	// p1のBMSCRを取得
+	unsigned char* lpDest1;		// 描画画面のバッファ
+	int width1;		// 描画座標幅
+	int height1;	// 描画座標高さ
+	int wByte1;
+	lpDest1 = (unsigned char*)bm1->pBit;
+	width1 = bm1->sx;
+	wByte1 = bm1->sx * 3;
+	height1 = bm1->sy;
+	wByte1 = (wByte1 + 3) / 4 * 4;
+
+	if (width1 <= 2)return;
+	if (height1 <= 2)return;
+
+	//ベクトル計算
+	//不透明ならtrue、透明ならfalse
+	vector<vector<bool>> colb(height1, vector<bool>(width1));
+
+	for (int j = 0; j < height1; j++)
+	{
+		for (int i = 0; i < width1; i++)
+		{
+			auto b = lpDest1[j * wByte1 + i * 3 + 0];
+			auto g = lpDest1[j * wByte1 + i * 3 + 1];
+			auto r = lpDest1[j * wByte1 + i * 3 + 2];
+			colb[j][i] = !((r == 0) & (g == 0) & (b == 0));
+		}
+	}
+
+	vector<vector<array<double, 3>>> dh2(height1 - 2, vector<array<double, 3>>(width1 - 2));
+	int p22 = p2 * p2;
+	for (int j = 1; j < height1 - 1; j++)
+	{
+		for (int i = 1; i < width1 - 1; i++)
+		{
+			if (colb[j][i] == false)continue;
+
+			array<double, 3> xy;
+			double min0len = 1.0 * p22;
+			double totalvecx = 0.0;
+			double totalvecy = 0.0;
+			for (int j1 = -p2; j1 <= p2; j1++) 
+			{
+				int j2 = j + j1;
+				if (j2 < 0)continue;
+				if (j2 >= height1)continue;
+				for (int i1 = -p2; i1 <= p2; i1++)
+				{
+					if (j1 * j1 + i1 * i1 > p22)continue;
+					int i2 = i + i1;
+					if (i2 < 0)continue;
+					if (i2 >= width1)continue;
+
+					if (colb[j2][i2])
+					{
+						totalvecx += 1.0 * i1;
+						totalvecy += 1.0 * j1;
+					}
+					else 
+					{
+						min0len = min(min0len, (double)(j1 * j1 + i1 * i1));
+					}
+				}
+			}
+
+			totalvecx = -totalvecx;
+			//これで法線の方向と透明ピクセルまでの距離がわかった
+			double dlen = sqrt(totalvecx * totalvecx + totalvecy * totalvecy);
+			if (dlen != 0.0) 
+			{
+				//ここで法線を計算。
+				//まずは方向だけ
+				totalvecx /= dlen;
+				totalvecy /= dlen;
+
+				//min0lenは0～p2の二乗
+				//円関数のdy/dx
+				auto dy = sqrt((double)p22 - min0len) / sqrt(min0len);
+				//カーブがきついほうが法線がきつい
+				totalvecx *= dy;
+				totalvecy *= dy;
+
+				double vecz = 1.0 / dp3;//高さを反映
+				auto rdlen = 1.0 / sqrt(totalvecx * totalvecx + totalvecy * totalvecy + vecz * vecz);
+				totalvecx *= rdlen;
+				totalvecy *= rdlen;
+				vecz *= rdlen;
+
+				xy[0] = totalvecx;
+				xy[1] = totalvecy;
+				xy[2] = vecz;
+			}
+			else 
+			{
+				xy[0] = 0;//x
+				xy[1] = 0;//y
+				xy[2] = 1;//z
+			}
+			dh2[j - 1][i - 1] = xy;
+
+		}
+	}
+
+
+
+
+	//ベクトル計算して光
+	for (int j = 1; j < height1 - 1; j++)
+	{
+		for (int i = 1; i < width1 - 1; i++)
+		{
+			if (colb[j][i] == false) continue;
+
+			auto b = lpDest1[j * wByte1 + i * 3 + 0];
+			auto g = lpDest1[j * wByte1 + i * 3 + 1];
+			auto r = lpDest1[j * wByte1 + i * 3 + 2];
+
+			auto vecx = dh2[j][i][0];
+			auto vecy = dh2[j][i][1];
+			auto vecz = dh2[j][i][2];
+
+			//ピクセルから光源までを計算
+			double pz = 0.0;
+			double py = (double)(height1 - 1 - j);
+			double px = (double)i;
+			double rvecx = dp4 - px;
+			double rvecy = dp5 - py;
+			double rvecz = dp6 - pz;
+			double rdlen = 1.0 / sqrt(rvecx * rvecx + rvecy * rvecy + rvecz * rvecz);
+			rvecx *= rdlen;
+			rvecy *= rdlen;
+			rvecz *= rdlen;
+			
+			//内積計算
+			double dot = rvecx * vecx + rvecy * vecy + rvecz * vecz;
+			if (dot < 0)continue;
+			//スペキュラは適当に
+			double sp = pow(dot, dp10);
+
+			double colr = 0;
+			double colg = 0;
+			double colb = 0;
+
+			colr += sp * dp11 * dp7;
+			colg += sp * dp11 * dp8;
+			colb += sp * dp11 * dp9;
+
+			colr += dot * dp7 + (double)r;
+			colg += dot * dp8 + (double)g;
+			colb += dot * dp9 + (double)b;
+
+			colr = min(max(colr, 0), 255);
+			colg = min(max(colg, 0), 255);
+			colb = min(max(colb, 0), 255);
+
+			lpDest1[j * wByte1 + i * 3 + 0] = (unsigned char)colb;
+			lpDest1[j * wByte1 + i * 3 + 1] = (unsigned char)colg;
+			lpDest1[j * wByte1 + i * 3 + 2] = (unsigned char)colr;
+		}
+	}
+
+
+}
 
 
 
@@ -552,6 +835,14 @@ static int cmdfunc( int cmd )
 
 	case 0x06:
 		MulVal();
+		break;
+
+	case 0x07:
+		PixelHeight();
+		break;
+
+	case 0x08:
+		PixelCosHeightVecLight();
 		break;
 
 	default:

@@ -1,0 +1,12 @@
+#include "PNGmaker.as"
+
+
+fname="HPblack.png"
+screen 2,300,200
+screen 3,300,200
+PngLoad fname,2,3
+gsel 2,2
+redraw 1
+
+gsel 3,2
+redraw 1
