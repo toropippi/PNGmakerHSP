@@ -1,0 +1,12 @@
+#include "PNGmaker.as"
+
+name="buttonrot_l.png"
+buffer 1:picload name
+buffer 2:picload name
+pngload name,1,2
+gsel 1
+bmpsave "1.bmp"
+gsel 2
+bmpsave "2.bmp"
+
+end
