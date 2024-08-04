@@ -1,0 +1,203 @@
+#include "PNGmaker.as"
+
+/*=======================================================================================================
+                                                                            Drag And Drop モジュール３号
+HSP3.0β5？     2005        １号製作(2.61から3.0へ移行するため)
+HSP3.22         2011.04.04  ２号製作(１号ロストのため)
+HSP3.5β3       2016.01.21  ３号製作(蓄積案件反映、新規の方が早かったので)
+                            HDL対応、未初期化変数対策、座標ずれ、ユニコード取得、ラベル引数対応
+                            [追加]DandD_SetLabel , DandD_SetUnlabel , DandD_GetPathUni
+                            [廃止]DandD_SetSubLabel , DandD_GetList
+%--------------------------------------------------------------------------------------------------------
+%dll        ;                   HDL(HSP Document Library)対応ファイル。commonに放り込むだけで対応します。
+和謹製モジュール
+%port       ;   DLLやモジュールを別途用意する必要はありませんがWin32APIを使用しますので環境に依存します。
+Win
+%author     ;                                       Copyright (C) 2005-2016 衣日和 All rights reserved.
+衣日和
+%url        ;                                   最新版はこちらから。なんかてきとーWEB Site『略して仮。』
+http://www.tvg.ne.jp/menyukko/
+%note       ;                                                                           標準ファイル名
+DragAndDropModule.hsp をインクルードする。
+%group
+ドラッグ＆ドロップモジュール
+%======================================================================================================*/
+#ifndef DragAndDrop3
+#module DargAndDrop3
+
+#uselib "shell32.dll"   ;   ★ドラッグ＆ドロップをするAPI
+#func apiDragAcceptFiles    "DragAcceptFiles"   int, int            ; 受け入れ設定 [hwnd][fAccept;bool]
+#func apiDragQueryFile      "DragQueryFileW"    int, int, var, int          ; ファイル名取得
+#func apiDragQueryFile_2    "DragQueryFileW"    int, int, nullptr, nullptr  ; 数/文字数取得
+                                            ; [hDrop][iFile:-1(ファイル数)or 0～(index)][pszFile][cch]
+;#func apiDragQueryPoint    "DragQueryPoint"    int, var            ; 座標取得 [hDrop][ppt:POINT(x,y)]
+#func apiDragFinish         "DragFinish"        int                 ; 解放 [hDrop]
+#define  WM_DROPFILES       0x0233              ; [wParam:hDrop]
+
+#uselib "user32.dll"
+#func apiScreenToClient     "ScreenToClient"    int, var    ; [hwnd][ppt:POINT(x,y)]
+
+; Shift_JIS     半角1文字:1byte  全角1文字:2byte  HSP標準の日本語文字セット。
+; UNICODE       半角も全角も1文字:2byte(4byteへの拡張機構あり)  世界中の文字を集めた文字セット。
+;  (UTF-16LE)   モジュール内で使用するが上記程度の認識なので注意。本当ならソレ用のAPIを使用すべき。
+;               本気でやるなら 電子の言霊(http://www31.tok2.com/home/tt/)様のmod_unicodeがおすすめ。
+
+; ドロドロ時の座標取得について
+;   DragQueryPoint で取得できる座標は、Win10の解像度設定によってはうまくいかない事があるらしい。
+;   mousex/mousey で取得した場合、クライアント領域外のときに絶望する。という訳でScreenToClientで行くか。
+
+/* -----     -----     ----- %
+%index  ; ☆
+DandD_SetWindow
+Ｄ＆Ｄの受け入れ指定
+%prm
+Flag
+Flag [定数]0(受け入れ拒否) or 1(受け入れ許可)
+%inst
+現在のウィンドウにＤ＆Ｄを受け入れるかを指定します。
+許可しているウィンドウに、エクスプローラからファイルをＤ＆Ｄするとモジュール内の変数にファイルパスが保存されます。各命令/関数で取り出しが可能です。
+
+※命令実行後、ウィンドウメッセージWM_DROPFILES(0x0233)はモジュール内で処理しますのでoncmd併用時は注意してください。
+%href
+DandD_SetLabel
+DandD_GetPath
+DandD_GetInfo
+%index  ; ☆
+DandD_SetLabel
+Ｄ＆Ｄ時の割り込み指定(ラベル)
+%prm
+Label
+Label [ラベル]割り込み先ラベル
+%inst
+ウィンドウがＤ＆Ｄを受け取った時に、サブルーチンによる割り込みを発生させます。割り込みによる処理が完了したら必ずreturnで制御を返してください。
+%href
+DandD_SetUnlabel
+%index  ; ☆
+DandD_SetUnlabel
+Ｄ＆Ｄ時の割り込み指定(キャンセル)
+%inst
+DandD_SetLabelで指定した割り込みをキャンセルします。
+%href
+DandD_SetLabel
+% -----     -----     ----- */
+#deffunc DandD_SetWindow int f
+    if f == 0  : apiDragAcceptFiles hwnd, 0     ; Off
+    if f == 1 {
+        oncmd gosub *ddLabel_WmDropFiles, WM_DROPFILES
+        apiDragAcceptFiles hwnd, 1              ; On
+    }
+    return
+
+#deffunc DandD_SetLabel label l
+    ddSubLabel = l              ; HSP3.5β3から命令のパラメータにラベル指定が可能になったので早速。
+    return
+
+#deffunc DandD_SetUnlabel
+    ddSubLabel = 0
+    return
+
+*ddLabel_WmDropFiles
+    ddTmpi = wparam, ginfo_sel, 0                       ; hDrop, CurWinID, 文字数用
+    ddInfo = 0, ginfo_mx, ginfo_my, ginfo_intid         ; FileCnt, PointX, PointY, WinID
+    ddInfo = apiDragQueryFile_2(ddTmpi, -1)             ; ファイル数
+;   apiDragQueryPoint ddTmpi, ddInfo(1)                 ; 座標 x, y
+    gsel ginfo_intid
+    apiScreenToClient hwnd, ddInfo(1)                   ; 座標変換(スクリーン→クライアント)
+    gsel ddTmpi(1)
+    ddList = ""
+    repeat ddInfo                                       ; ファイル名を一個ずつ取得するループ
+        ddTmpi(2) = apiDragQueryFile_2(ddTmpi, cnt)     ; 文字数取得
+        memexpand ddList(cnt), ddTmpi(2) * 2 + 2        ; メモリ確保(未存在な配列でもいける)
+        apiDragQueryFile ddTmpi, cnt, ddList(cnt), ddTmpi(2) + 1    ; ファイル名取得
+    loop
+    apiDragFinish ddTmpi                                ; 安全第一で早めに解放しておく
+    if vartype(ddSubLabel) == vartype("label")  : gosub ddSubLabel  ; サブルーチン
+	//ここにオリジナルpngコードかく
+	repeat ddInfo
+		fname=cnvwtos(ddList(cnt))
+		gsel 0
+		font "",12
+		mes fname
+		buffer 1:picload fname
+		x=ginfo(12)
+		y=ginfo(13)
+		buffer 2,x,y:pos 0,0:gcopy 1,0,0,x,y
+		buffer 3,x,y:pos 0,0:gcopy 1,0,0,x,y
+		pget 0,0
+		NotColortoVal 2,ginfo_r,ginfo_g,ginfo_b,255
+		NotColortoVal 3,ginfo_r,ginfo_g,ginfo_b,0
+		gsel 2
+		pos 0,0
+		gmode 6,ginfo(12),ginfo(13),256
+		gcopy 3,0,0,ginfo(12),ginfo(13)
+		pngsave fname,1,2
+	loop
+
+    return 0                                            ; ←処理したら 0 を返すこと
+
+/* -----     -----     ----- %
+%index  ; ☆
+DandD_GetInfo
+Ｄ＆Ｄ時の情報取得
+%prm
+(Type)
+Type [定数]取得する情報の種類
+    0:ファイル数      DandD_FileCnt
+    1:座標X           DandD_DropPX
+    2:座標Y           DandD_DropPY
+    3:ウィンドウID    DandD_DropWinID
+%inst
+最後にＤ＆Ｄが実行された時の情報を取得します。
+座標は、Ｄ＆Ｄを受け取ったウィンドウの描画域左上を0,0とするクライアント座標系で取得されます(groll等のスクロール量は反映されません)。
+また、各Typeにはシステム変数風マクロを用意しました。
+%index  ; ☆
+DandD_GetPath
+Ｄ＆Ｄされたファイル名を取得
+%prm
+(Index)
+Index [整数]取得するファイル名のインデックス
+%inst
+最後に実行されたＤ＆Ｄで受け取ったファイル名を取得します。
+Indexには、0から始まる取得対象の番号を指定します。この関数は、ファイルひとつ分の絶対パスを返します。
+
+※この関数は、ファイル名をShift_JISに変換します。
+%href
+DandD_GetPathUni
+%index  ; ☆
+DandD_GetPathUni
+Ｄ＆Ｄされたファイル名を取得(ユニコード)
+%prm
+ResVar, Index
+ResVar [変数]ファイル名が代入される変数(文字列型)
+Index  [整数]取得するファイル名のインデックス
+%inst
+最後に実行されたＤ＆Ｄで受け取ったファイル名を取得します。
+Indexには、0から始まる取得対象の番号を指定します。この命令は、ファイルひとつ分の絶対パスをユニコードのまま取得します。
+
+※Shift_JISでは扱えない一部のファイルパスに有効ですが、ファイル操作には相応の知識が必要となります。
+%href
+DandD_GetPath
+% -----     -----     ----- */
+#defcfunc DandD_GetInfo int i
+    return ddInfo(i)                ; 1回以上DandDされてからで無いと参照エラーしますけどねorz...
+#define global DandD_FileCnt        DandD_GetInfo(0)
+#define global DandD_DropPX         DandD_GetInfo(1)
+#define global DandD_DropPY         DandD_GetInfo(2)
+#define global DandD_DropWinID      DandD_GetInfo(3)
+
+#defcfunc DandD_GetPath int i
+    return cnvwtos(ddList(i))       ; ファイル数無視するとろくなことにならないですけどねorz...
+
+#deffunc DandD_GetPathUni var v, int i
+    ddTmpi = 0
+    repeat          ; ユニコードのなんちゃって文字数計測
+        if peek(ddList(i), cnt * 2) == 0  : ddTmpi = cnt + 1  : break
+    loop
+    v = ""  : memexpand v, ddTmpi * 2  : memcpy v, ddList(i), ddTmpi * 2
+    return
+
+; http://www.tvg.ne.jp/menyukko/  Copyright(C) 2005-2016 衣日和 All rights reserved.
+#global
+#endif
+
+DandD_SetWindow 1

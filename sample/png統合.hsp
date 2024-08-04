@@ -1,0 +1,6 @@
+#include "PNGmaker.as"
+
+buffer 1:picload "1.bmp"
+buffer 2:picload "2.bmp"
+pngsave "out.png",1,2
+end
